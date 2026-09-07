@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  background: #000000;
+}
+
+@layer components {
+  .input {
+    @apply w-full bg-dark-900 border border-dark-700 rounded-lg px-4 py-3 
+           text-white placeholder-dark-400 focus:outline-none focus:border-primary-500;
+  }
+  
+  .btn-primary {
+    @apply bg-primary-500 text-dark-950 font-semibold px-4 py-2 rounded-lg hover:bg-primary-400 transition-colors;
+  }
+  
+  .btn-secondary {
+    @apply border border-dark-700 text-white font-medium px-4 py-2 rounded-lg hover:border-primary-500 transition-colors;
+  }
+  
+  .card {
+    @apply bg-dark-900/60 border border-dark-800 rounded-xl p-6;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #000;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #FFD600;
+}

@@ -57,8 +57,17 @@ export default function AnalyticsPage() {
   const topProducts = data?.top_products || [];
   const categorySales = data?.category_sales || [];
   const customerGrowth = data?.customer_growth || [];
+  const paymentBreakdown = data?.payment_breakdown || { successful: 0, failed: 0 };
+
+  const paymentData = [
+    { name: 'Successful', value: paymentBreakdown.successful || 0 },
+    { name: 'Failed', value: paymentBreakdown.failed || 0 },
+  ];
+  const PAYMENT_COLORS = ['#34d399', '#ef4444'];
 
   const tooltipStyle = { backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '8px' };
+  const fmtMoney = (value: any) =>
+    value == null ? '₦0' : `₦${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
   return (
     <AdminLayout>
@@ -107,53 +116,61 @@ export default function AnalyticsPage() {
         <div className="card">
           <h2 className="font-semibold mb-4">Revenue by Month (12 months)</h2>
           <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={revenueByMonth}>
-                <defs>
-                  <linearGradient id="revenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#FFD600" stopOpacity={0.8} />
-                    <stop offset="95%" stopColor="#FFD600" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                <XAxis dataKey="month" stroke="#71717a" />
-                <YAxis stroke="#71717a" />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Area type="monotone" dataKey="revenue" stroke="#FFD600" fill="url(#revenue)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            {revenueByMonth.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={revenueByMonth}>
+                  <defs>
+                    <linearGradient id="revenue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#FFD600" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#FFD600" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+                  <XAxis dataKey="month" stroke="#71717a" />
+                  <YAxis stroke="#71717a" />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(value: any) => fmtMoney(value)} />
+                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#FFD600" fill="url(#revenue)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-dark-500 text-sm">Nta revenue izo mu mezi 12 ashyize.</div>
+            )}
           </div>
         </div>
 
         <div className="card">
           <h2 className="font-semibold mb-4">Top Products by Sales</h2>
           <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={topProducts}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                <XAxis dataKey="name" stroke="#71717a" tick={{ fontSize: 11 }} />
-                <YAxis stroke="#71717a" />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Bar dataKey="sales" fill="#FFD600" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {topProducts.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={topProducts}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+                  <XAxis dataKey="name" stroke="#71717a" tick={{ fontSize: 11 }} />
+                  <YAxis stroke="#71717a" />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Bar dataKey="sales" name="Units sold" fill="#FFD600" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-dark-500 text-sm">Nta products zigurishijwe muri ibi.</div>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-8">
+      <div className="grid lg:grid-cols-3 gap-8">
         <div className="card">
           <h2 className="font-semibold mb-4">Sales by Category</h2>
           <div className="h-80">
             {categorySales.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={categorySales} dataKey="value" cx="50%" cy="50%" outerRadius={100} label>
+                  <Pie data={categorySales} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label>
                     {categorySales.map((entry: any, index: number) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={tooltipStyle} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(value: any) => `${value}%`} />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>
@@ -166,15 +183,40 @@ export default function AnalyticsPage() {
         <div className="card">
           <h2 className="font-semibold mb-4">Customer Growth</h2>
           <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={customerGrowth}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                <XAxis dataKey="month" stroke="#71717a" />
-                <YAxis stroke="#71717a" />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Line type="monotone" dataKey="customers" stroke="#60a5fa" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
+            {customerGrowth.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={customerGrowth}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+                  <XAxis dataKey="month" stroke="#71717a" />
+                  <YAxis stroke="#71717a" />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Line type="monotone" dataKey="customers" name="Customers" stroke="#60a5fa" strokeWidth={2} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-dark-500 text-sm">No customer data yet.</div>
+            )}
+          </div>
+        </div>
+
+        <div className="card">
+          <h2 className="font-semibold mb-4">Payment Breakdown</h2>
+          <div className="h-80">
+            {paymentData.some((p) => p.value > 0) ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={paymentData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={100} label>
+                    {paymentData.map((entry: any, index: number) => (
+                      <Cell key={`cell-${index}`} fill={PAYMENT_COLORS[index % PAYMENT_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-dark-500 text-sm">No payments recorded yet.</div>
+            )}
           </div>
         </div>
       </div>

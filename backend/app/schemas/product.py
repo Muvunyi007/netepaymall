@@ -79,6 +79,17 @@ class ProductVariantResponse(BaseModel):
         from_attributes = True
 
 
+class InventoryResponse(BaseModel):
+    quantity: int
+    reserved: int
+    low_stock_threshold: int
+    track_inventory: bool
+    allow_backorder: bool
+
+    class Config:
+        from_attributes = True
+
+
 class ProductCreate(BaseModel):
     name: str
     slug: str
@@ -134,8 +145,10 @@ class ProductResponse(BaseModel):
     is_active: bool
     is_featured: bool
     category_id: UUID
+    category: Optional[CategoryResponse] = None
     images: List[ProductImageResponse] = []
     variants: List[ProductVariantResponse] = []
+    inventory: Optional[InventoryResponse] = None
     created_at: datetime
     
     class Config:

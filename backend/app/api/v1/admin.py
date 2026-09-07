@@ -12,8 +12,15 @@ from app.schemas.order import ResponseModel
 from app.api.deps import require_role
 from uuid import UUID
 from datetime import datetime, timezone, timedelta
+import re as _re
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+
+def slugify(value: str) -> str:
+    value = _re.sub(r"[^\w\s-]", "", (value or "").lower())
+    value = _re.sub(r"[\s_-]+", "-", value).strip("-")
+    return value or "product"
 
 
 @router.get("/dashboard", response_model=ResponseModel)
@@ -278,6 +285,7 @@ async def admin_list_products(
         selectinload(Product.images),
         selectinload(Product.variants),
         selectinload(Product.inventory),
+        selectinload(Product.category),
     ).where(Product.deleted_at == None).order_by(Product.created_at.desc())
     
     offset = (page - 1) * limit
@@ -308,11 +316,108 @@ async def admin_create_product(
     current_user: User = Depends(require_role(UserRole.ADMIN, UserRole.SUPER_ADMIN)),
     db: AsyncSession = Depends(get_db)
 ):
-    from app.models.product import Product as ProductModel
-    product = ProductModel(**product_data)
+    from decimal import Decimal, InvalidOperation
+    from app.models.product import Product as ProductModel, ProductImage, Inventory
+
+    data = dict(product_data)
+    image_urls = None
+    if "image_urls" in data:
+        image_urls = data.pop("image_urls")
+    elif "images" in data:
+        image_urls = data.pop("images")
+    inventory_data = data.pop("inventory", None) if isinstance(data.get("inventory"), dict) else None
+    data.pop("variants", None)
+
+    for field in ("price", "compare_price", "cost_price", "weight"):
+        value = data.get(field)
+        if value in (None, ""):
+            data.pop(field, None)
+        else:
+            try:
+                data[field] = Decimal(str(value))
+            except InvalidOperation:
+                data.pop(field, None)
+
+    name = data.get("name") or ""
+    if not data.get("slug"):
+        data["slug"] = slugify(name)
+
+    from uuid import uuid4
+    base_slug = data["slug"] or slugify(name)
+    slug = base_slug
+    for _ in range(5):
+        exists = (await db.execute(select(Product.id).where(Product.slug == slug))).first()
+        if exists:
+            slug = f"{base_slug}-{uuid4().hex[:8]}"
+        else:
+            break
+    data["slug"] = slug
+
+    if data.get("sku"):
+        from uuid import uuid4 as _u
+        base_sku = str(data["sku"])
+        sku = base_sku
+        for _ in range(5):
+            exists = (await db.execute(select(Product.id).where(Product.sku == sku))).first()
+            if exists:
+                sku = f"{base_sku}-{_u().hex[:6]}"
+            else:
+                break
+        data["sku"] = sku
+
+    if data.get("category_id"):
+        from app.core.exceptions import BadRequestException
+        try:
+            data["category_id"] = UUID(str(data["category_id"]))
+        except (ValueError, AttributeError, TypeError):
+            raise BadRequestException("Invalid category selected")
+
+    product = ProductModel(**data)
     db.add(product)
     await db.flush()
-    
+
+    if isinstance(image_urls, list):
+        for idx, img in enumerate(image_urls):
+            if isinstance(img, dict):
+                url = img.get("url")
+                alt_text = img.get("alt_text")
+                is_primary = bool(img.get("is_primary") or idx == 0)
+            else:
+                url = img
+                alt_text = None
+                is_primary = idx == 0
+            if not url:
+                continue
+            db.add(ProductImage(
+                product_id=product.id,
+                url=str(url),
+                alt_text=alt_text,
+                sort_order=idx,
+                is_primary=is_primary,
+            ))
+
+    if inventory_data:
+        quantity = int(inventory_data.get("quantity") or 0)
+        db.add(Inventory(
+            product_id=product.id,
+            quantity=quantity,
+            low_stock_threshold=int(inventory_data.get("low_stock_threshold") or 10),
+            track_inventory=bool(inventory_data.get("track_inventory", True)),
+            allow_backorder=bool(inventory_data.get("allow_backorder", False)),
+        ))
+
+    await db.flush()
+
+    result = await db.execute(
+        select(ProductModel).options(
+            selectinload(ProductModel.images),
+            selectinload(ProductModel.variants),
+            selectinload(ProductModel.inventory),
+            selectinload(ProductModel.category),
+        ).where(ProductModel.id == product.id)
+    )
+    product = result.scalar_one()
+
     from app.schemas.product import ProductResponse
     return ResponseModel(
         data=ProductResponse.model_validate(product),
@@ -327,20 +432,92 @@ async def admin_update_product(
     current_user: User = Depends(require_role(UserRole.ADMIN, UserRole.SUPER_ADMIN)),
     db: AsyncSession = Depends(get_db)
 ):
+    from decimal import Decimal, InvalidOperation
+    from sqlalchemy import delete
+    from app.models.product import Product as ProductModel, ProductImage, Inventory
+    from app.core.exceptions import NotFoundException
+
     result = await db.execute(
-        select(Product).where(Product.id == product_id, Product.deleted_at == None)
+        select(Product).options(
+            selectinload(Product.images),
+            selectinload(Product.variants),
+            selectinload(Product.inventory),
+            selectinload(Product.category),
+        ).where(Product.id == product_id, Product.deleted_at == None)
     )
     product = result.scalar_one_or_none()
-    
+
     if not product:
-        from app.core.exceptions import NotFoundException
         raise NotFoundException("Product not found")
-    
-    for key, value in update_data.items():
-        setattr(product, key, value)
-    
+
+    data = dict(update_data)
+    image_urls = None
+    if "image_urls" in data:
+        image_urls = data.pop("image_urls")
+    elif "images" in data:
+        image_urls = data.pop("images")
+    inventory_data = data.pop("inventory", None) if isinstance(data.get("inventory"), dict) else None
+    data.pop("variants", None)
+
+    for field in ("price", "compare_price", "cost_price", "weight"):
+        value = data.get(field)
+        if value in (None, ""):
+            data.pop(field, None)
+        else:
+            try:
+                data[field] = Decimal(str(value))
+            except InvalidOperation:
+                data.pop(field, None)
+
+    for key, value in data.items():
+        if key == "category_id" and value:
+            try:
+                data[key] = UUID(str(value))
+            except (ValueError, AttributeError, TypeError):
+                from app.core.exceptions import BadRequestException
+                raise BadRequestException("Invalid category selected")
+        setattr(product, key, data[key])
+
+    if image_urls is not None:
+        await db.execute(delete(ProductImage).where(ProductImage.product_id == product.id))
+        for idx, img in enumerate(image_urls):
+            if isinstance(img, dict):
+                url = img.get("url")
+                alt_text = img.get("alt_text")
+                is_primary = bool(img.get("is_primary") or idx == 0)
+            else:
+                url = img
+                alt_text = None
+                is_primary = idx == 0
+            if not url:
+                continue
+            db.add(ProductImage(
+                product_id=product.id,
+                url=str(url),
+                alt_text=alt_text,
+                sort_order=idx,
+                is_primary=is_primary,
+            ))
+
+    if inventory_data is not None:
+        inv = product.inventory
+        if inv is None:
+            inv = Inventory(product_id=product.id)
+            db.add(inv)
+        inv.quantity = int(inventory_data.get("quantity", inv.quantity or 0))
+        inv.low_stock_threshold = int(inventory_data.get("low_stock_threshold", inv.low_stock_threshold or 10))
+        inv.track_inventory = bool(inventory_data.get("track_inventory", inv.track_inventory))
+        inv.allow_backorder = bool(inventory_data.get("allow_backorder", inv.allow_backorder))
+
     await db.flush()
-    
+
+    product.images = (await db.execute(
+        select(ProductImage).where(ProductImage.product_id == product.id).order_by(ProductImage.sort_order)
+    )).scalars().all()
+    product.inventory = (await db.execute(
+        select(Inventory).where(Inventory.product_id == product.id)
+    )).scalar_one_or_none()
+
     from app.schemas.product import ProductResponse
     return ResponseModel(
         data=ProductResponse.model_validate(product),

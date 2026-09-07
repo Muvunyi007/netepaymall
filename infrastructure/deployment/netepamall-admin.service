@@ -1,0 +1,16 @@
+[Unit]
+Description=NETEPAMALL Admin (Next.js)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/netepamall/admin
+Environment=NODE_ENV=production
+Environment=PORT=8002
+ExecStart=/usr/bin/npm run start -- -p 8002
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

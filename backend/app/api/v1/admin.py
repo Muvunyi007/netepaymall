@@ -107,7 +107,7 @@ async def admin_list_orders(
     current_user: User = Depends(require_role(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.STAFF)),
     db: AsyncSession = Depends(get_db)
 ):
-    query = select(Order).options(selectinload(Order.items))
+    query = select(Order).options(selectinload(Order.items), selectinload(Order.user))
     count_query = select(func.count(Order.id))
     
     if status:
@@ -127,9 +127,48 @@ async def admin_list_orders(
     
     total_pages = (total + limit - 1) // limit
     
-    from app.schemas.order import OrderResponse
+    data = []
+    for order in orders:
+        user = order.user
+        data.append({
+            "id": order.id,
+            "order_number": order.order_number,
+            "status": order.status.value if hasattr(order.status, "value") else order.status,
+            "subtotal": float(order.subtotal),
+            "delivery_fee": float(order.delivery_fee),
+            "tax": float(order.tax),
+            "discount": float(order.discount),
+            "total": float(order.total),
+            "coupon_code": order.coupon_code,
+            "notes": order.notes,
+            "delivery_method": order.delivery_method,
+            "created_at": order.created_at,
+            "confirmed_at": order.confirmed_at,
+            "shipped_at": order.shipped_at,
+            "delivered_at": order.delivered_at,
+            "user": {
+                "first_name": user.first_name if user else None,
+                "last_name": user.last_name if user else None,
+                "email": user.email if user else None,
+                "phone": user.phone if user else None,
+            },
+            "items": [
+                {
+                    "id": item.id,
+                    "product_id": item.product_id,
+                    "variant_id": item.variant_id,
+                    "quantity": item.quantity,
+                    "unit_price": float(item.unit_price),
+                    "total_price": float(item.total_price),
+                    "product_name": item.product_name,
+                    "product_image": item.product_image,
+                }
+                for item in order.items
+            ],
+        })
+    
     return ResponseModel(
-        data=[OrderResponse.model_validate(order) for order in orders],
+        data=data,
         meta={
             "page": page,
             "limit": limit,

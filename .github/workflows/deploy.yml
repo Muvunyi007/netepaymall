@@ -1,0 +1,56 @@
+name: Deploy Web + Admin
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: SSH to server -> git pull + build + restart
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          API_URL: ${{ vars.API_URL || 'http://167.88.36.40:8000' }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$SSH_PORT" "${SSH_HOST##*@}" >> ~/.ssh/known_hosts 2>/dev/null
+
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_HOST" \
+            "REMOTE='${{ secrets.DEPLOY_DIR || vars.DEPLOY_DIR || '/root/netepaymall' }}' \
+             API_URL='$API_URL' \
+             bash -s" <<'REMOTE'
+          set -euo pipefail
+          echo "==> Pull git (main)"
+          cd "$REMOTE"
+          if [ ! -d .git ]; then
+            git clone https://github.com/Muvunyi007/netepaymall.git .
+          else
+            git fetch origin main && git reset --hard origin/main
+          fi
+
+          echo "==> Build + start: web & admin"
+          for app in web admin; do
+            cd "$REMOTE/$app"
+            if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+            NEXT_PUBLIC_API_URL="$API_URL" npm run build
+          done
+
+          echo "==> Restart systemd services"
+          systemctl restart netepamall-web netepamall-admin || true
+          nginx -t && systemctl reload nginx || true
+          echo "DEPLOY OK"
+REMOTE

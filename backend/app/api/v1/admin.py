@@ -81,7 +81,27 @@ async def get_dashboard_stats(
         select(func.count(SupportRequest.id)).where(SupportRequest.status == "open")
     )
     open_support = open_support_result.scalar()
-    
+
+    last_7_start = today - timedelta(days=6)
+    last_7_start_dt = datetime.combine(last_7_start, datetime.min.time()).replace(tzinfo=timezone.utc)
+    revenue_rows = await db.execute(
+        select(func.date(Payment.created_at), func.sum(Payment.amount))
+        .where(
+            Payment.status == PaymentStatus.SUCCESSFUL,
+            Payment.created_at >= last_7_start_dt,
+        )
+        .group_by(func.date(Payment.created_at))
+    )
+    revenue_by_day_map = {str(day): float(amount) for day, amount in revenue_rows.all()}
+    revenue_by_day = []
+    for i in range(7):
+        day = last_7_start + timedelta(days=i)
+        revenue_by_day.append({
+            "date": day.isoformat(),
+            "day": day.strftime("%a"),
+            "revenue": revenue_by_day_map.get(day.isoformat(), 0.0),
+        })
+
     return ResponseModel(
         data={
             "total_revenue": float(total_revenue),
@@ -94,7 +114,8 @@ async def get_dashboard_stats(
             "low_stock": low_stock,
             "successful_payments": successful_payments,
             "failed_payments": failed_payments,
-            "open_support_requests": open_support
+            "open_support_requests": open_support,
+            "revenue_by_day": revenue_by_day,
         }
     )
 

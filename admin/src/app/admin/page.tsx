@@ -98,15 +98,9 @@ export default function DashboardPage() {
     },
   ];
 
-  const revenueData = [
-    { day: 'Mon', revenue: 12000 },
-    { day: 'Tue', revenue: 18000 },
-    { day: 'Wed', revenue: 24500 },
-    { day: 'Thu', revenue: 19000 },
-    { day: 'Fri', revenue: 32000 },
-    { day: 'Sat', revenue: 28000 },
-    { day: 'Sun', revenue: 21000 },
-  ];
+  const revenueData = stats?.revenue_by_day || [];
+
+  const hasRevenueData = revenueData.length > 0 && revenueData.some((d: any) => d.revenue > 0);
 
   const paymentData = [
     { name: 'Successful', value: stats?.successful_payments || 0 },
@@ -135,29 +129,36 @@ export default function DashboardPage() {
 
       <div className="grid lg:grid-cols-3 gap-8">
         <div className="card lg:col-span-2">
-          <h2 className="font-semibold mb-4">Revenue Overview</h2>
+          <h2 className="font-semibold mb-4">Revenue Overview (Last 7 days)</h2>
           <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={revenueData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                <XAxis dataKey="day" stroke="#71717a" />
-                <YAxis stroke="#71717a" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#18181b',
-                    border: '1px solid #27272a',
-                    borderRadius: '8px',
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="revenue"
-                  stroke="#FFD600"
-                  strokeWidth={2}
-                  dot={{ r: 4, fill: '#FFD600' }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            {hasRevenueData ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={revenueData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+                  <XAxis dataKey="day" stroke="#71717a" />
+                  <YAxis stroke="#71717a" />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#18181b',
+                      border: '1px solid #27272a',
+                      borderRadius: '8px',
+                    }}
+                    formatter={(value: any) => `₦${Number(value).toLocaleString()}`}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="#FFD600"
+                    strokeWidth={2}
+                    dot={{ r: 4, fill: '#FFD600' }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-dark-400 text-center px-6">
+                Nta revenue ibonetse mu minsi 7 ishize.
+              </div>
+            )}
           </div>
         </div>
 
